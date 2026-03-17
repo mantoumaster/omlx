@@ -136,11 +136,19 @@ class RerankerEngine(BaseNonStreamingEngine):
             )
 
         loop = asyncio.get_running_loop()
+        was_compiled = model._is_compiled
         self._active_requests += 1
         try:
             output = await loop.run_in_executor(
                 get_mlx_executor(), _rerank_sync
             )
+            # Circuit breaker: compile was disabled at runtime, start keepalive
+            if was_compiled and not model._is_compiled and self._keepalive_task is None:
+                logger.info(
+                    f"Activating keepalive for {self._model_name} "
+                    f"(mx.compile disabled at runtime)"
+                )
+                self._start_keepalive(loop)
         finally:
             self._active_requests -= 1
 
